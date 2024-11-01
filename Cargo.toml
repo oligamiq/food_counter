@@ -1,34 +1,57 @@
 [package]
-name = "egui_template"
+name = "eframe_template"
 version = "0.1.0"
-authors = ["Emil Ernerfeldt <emilernerfeldt@gmail.com>"]
-edition = "2018"
+authors = ["Emil Ernerfeldt <emil.ernerfeldt@gmail.com>"]
+edition = "2021"
+include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
+rust-version = "1.76"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-crate-type = ["cdylib", "rlib"]
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
 [dependencies]
-egui = "0.5"
+egui = "0.29"
+eframe = { version = "0.29", default-features = false, features = [
+    "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+log = "0.4"
 
-# Gives us persistence. Remove if you do like.
+# You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
+serde_json = "*"
 
-# For compiling natively:
+egui-plotter = "0.3.0"
+plotters = { version = "0.3.7", features = ["histogram"] }
+chrono = { version = "*", features = ["serde", "wasmbind"] }
+
+# native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-egui_glium = "0.5"
+env_logger = "0.11"
 
-# For compiling to web:
+# web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-egui_web = "0.5"
-js-sys = "0.3"
-wasm-bindgen = "0.2"
-
-[patch.crates-io]
-egui = { git = "https://github.com/emilk/egui", rev = "58c025a7e3d509e93e8f525aa747af1c9bd3dcb1" } # 2020-12-19
-egui_glium = { git = "https://github.com/emilk/egui", rev = "58c025a7e3d509e93e8f525aa747af1c9bd3dcb1" } # 2020-12-19
-egui_web = { git = "https://github.com/emilk/egui", rev = "58c025a7e3d509e93e8f525aa747af1c9bd3dcb1" } # 2020-12-19
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3.70" # to access the DOM (to hide the loading text)
 
 [profile.release]
 opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2
+
+
+[patch.crates-io]
+egui-plotter = { git = "https://github.com/oligamiq/egui-plotter.git", branch = "allow_feathering" }
+
+# If you want to use the bleeding edge version of egui and eframe:
+# egui = { git = "https://github.com/emilk/egui", branch = "master" }
+# eframe = { git = "https://github.com/emilk/egui", branch = "master" }
+
+# If you fork https://github.com/emilk/egui you can test with:
+# egui = { path = "../egui/crates/egui" }
+# eframe = { path = "../egui/crates/eframe" }
