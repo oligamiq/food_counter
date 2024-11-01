@@ -177,7 +177,7 @@ impl eframe::App for TemplateApp {
             // ui.separator();
 
             // ui.add(egui::github_link_file!(
-            //     "https://github.com/emilk/eframe_template/blob/main/",
+            //     "https://github.com/emilk/food_counter/blob/main/",
             //     "Source code."
             // ));
 
@@ -224,7 +224,9 @@ impl eframe::App for TemplateApp {
                         .button(egui::RichText::new("取り消し").size(text_size))
                         .clicked()
                     {
-                        self.sold_food.pop();
+                        for _ in 0..3 {
+                            self.sold_food.pop();
+                        }
 
                         self.save_to_file(std::path::Path::new("sold_food.json"))
                             .unwrap_or_else(|e| eprintln!("Failed to save file: {}", e));
