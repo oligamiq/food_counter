@@ -5,11 +5,22 @@ pub struct TemplateApp {
     // Example stuff:
     label: String,
 
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
-
     #[serde(skip)]
     sold_food: Vec<SoldFood>,
+
+    // 注文個数の履歴
+    #[serde(skip)]
+    pub history: Vec<Order>,
+
+    // 注文個数
+    #[serde(skip)]
+    pub n: usize,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub enum Order {
+    Food(SoldFood, usize),
+    Reset,
 }
 
 impl Default for TemplateApp {
@@ -17,13 +28,14 @@ impl Default for TemplateApp {
         Self {
             // Example stuff:
             label: "Hello World!".to_owned(),
-            value: 2.7,
             sold_food: vec![],
+            history: vec![],
+            n: 3,
         }
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct SoldFood {
     pub name: String,
     pub time: chrono::DateTime<chrono::Utc>,
@@ -31,18 +43,23 @@ pub struct SoldFood {
 
 impl TemplateApp {
     pub fn add_sold_food(&mut self, name: String) {
-        for _ in 0..3 {
+        for _ in 0..self.n {
             self.sold_food.push(SoldFood {
                 name: name.clone(),
                 time: chrono::Utc::now(),
             });
         }
 
-        // 保存
-        let path = "sold_food.json";
-        if let Err(e) = self.save_to_file(std::path::Path::new(path)) {
-            eprintln!("Failed to save file: {}", e);
-        }
+        self.history.push(Order::Food(
+            SoldFood {
+                name,
+                time: chrono::Utc::now(),
+            },
+            self.n,
+        ));
+
+        self.save_to_file()
+            .unwrap_or_else(|e| eprintln!("Failed to save file: {}", e));
     }
 
     // 名前ごとに売れた個数を返す
@@ -86,10 +103,34 @@ impl TemplateApp {
 
         cc.egui_ctx.set_fonts(fonts);
 
-        Default::default()
+        // load
+        let mut app = Self::default();
+
+        app.load_from_file()
+            .unwrap_or_else(|e| eprintln!("Failed to load file: {}", e));
+
+        app
     }
 
-    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // 保存
+        let path = "sold_food.json";
+        if let Err(e) = self.save_to_file_sold_food(std::path::Path::new(path)) {
+            eprintln!("Failed to save file: {}", e);
+        }
+        // 注文個数の履歴を保存
+        let path = "history.json";
+        if let Err(e) = self.save_to_file_history(std::path::Path::new(path)) {
+            eprintln!("Failed to save file: {}", e);
+        }
+
+        Ok(())
+    }
+
+    pub fn save_to_file_sold_food(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if std::fs::exists(path)? {
             std::fs::remove_file(path)?;
         }
@@ -99,7 +140,35 @@ impl TemplateApp {
         Ok(())
     }
 
-    pub fn load_from_file(
+    pub fn save_to_file_history(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if std::fs::exists(path)? {
+            std::fs::remove_file(path)?;
+        }
+        let file = std::fs::File::create(path)?;
+        serde_json::to_writer(file, self.history.as_slice())?;
+
+        Ok(())
+    }
+
+    pub fn load_from_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // 保存
+        let path = "sold_food.json";
+        if let Err(e) = self.load_sold_food_from_file(std::path::Path::new(path)) {
+            eprintln!("Failed to load file: {}", e);
+        }
+        // 注文個数の履歴を保存
+        let path = "history.json";
+        if let Err(e) = self.load_history_from_file(std::path::Path::new(path)) {
+            eprintln!("Failed to load file: {}", e);
+        }
+
+        Ok(())
+    }
+
+    pub fn load_sold_food_from_file(
         &mut self,
         path: &std::path::Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -111,6 +180,31 @@ impl TemplateApp {
         self.sold_food = serde_json::from_reader(file)?;
 
         Ok(())
+    }
+
+    pub fn load_history_from_file(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !std::fs::exists(path)? {
+            return Ok(());
+        }
+
+        let file = std::fs::File::open(path)?;
+        self.history = serde_json::from_reader(file)?;
+
+        Ok(())
+    }
+
+    pub fn get_last_history(&self) -> Option<usize> {
+        let n = self
+            .history
+            .iter()
+            .enumerate()
+            .filter_map(|(i, h)| if let Order::Reset = h { Some(i) } else { None })
+            .last();
+
+        n
     }
 }
 
@@ -137,17 +231,24 @@ impl eframe::App for TemplateApp {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                         // save
-                        let path = "sold_food.json";
                         if ui.button("Save").clicked() {
-                            if let Err(e) = self.save_to_file(std::path::Path::new(path)) {
+                            if let Err(e) = self.save_to_file() {
                                 eprintln!("Failed to save file: {}", e);
                             }
                         }
                         // load
                         if ui.button("Load").clicked() {
-                            if let Err(e) = self.load_from_file(std::path::Path::new(path)) {
+                            if let Err(e) = self.load_from_file() {
                                 eprintln!("Failed to load file: {}", e);
                             }
+                        }
+                        // reset
+                        if ui.button("Reset").clicked() {
+                            self.sold_food.clear();
+                            self.save_to_file()
+                                .unwrap_or_else(|e| eprintln!("Failed to save file: {}", e));
+
+                            self.history.push(Order::Reset);
                         }
                     });
                     ui.add_space(16.0);
@@ -189,10 +290,20 @@ impl eframe::App for TemplateApp {
             // 大きく真ん中の上に配置
             // ui.heading("売れた玉数");
             ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                let n = self.history.len() as isize
+                    - self.get_last_history().map(|x| x as isize).unwrap_or(-1)
+                    - 1;
+
+                // ui.horizontal(|ui| {
                 ui.label(
-                    egui::RichText::new(format!("{}玉売れました", self.sold_food.len()))
-                        .size(text_size * 2.0),
+                    egui::RichText::new(format!(
+                        "{}玉売れました！（注文数：{}）",
+                        self.sold_food.len(),
+                        n,
+                    ))
+                    .size(text_size * 2.0),
                 );
+                // });
             });
 
             // 下の方
@@ -200,12 +311,33 @@ impl eframe::App for TemplateApp {
                 ui.add_space(text_size * 2.0);
 
                 ui.horizontal(|ui| {
+                    // ui.add(
+                    //     egui::Slider::new(&mut self.n, 0..=5)
+                    //         .text(egui::RichText::new("注文個数").size(text_size))
+                    //         .clamping(egui::SliderClamping::Edits),
+                    // );
+                    if ui
+                        .button(egui::RichText::new("+1").size(text_size))
+                        .clicked()
+                    {
+                        self.n += 1;
+                    }
+
+                    ui.label(egui::RichText::new(format!("{}", self.n)).size(text_size));
+
+                    if ui
+                        .button(egui::RichText::new("-1").size(text_size))
+                        .clicked()
+                    {
+                        self.n -= 1;
+                    }
+
                     // 0.8倍の範囲にボタンを配置
                     // プレーン、チョコ、いちご、はちみつ、シナモン
                     let food_list = &["プレーン", "チョコ", "いちご", "はちみつ", "シナモン"];
                     let spacing = range * 0.8 / (food_list.len() as f32 + 1.0); // ボタンの間にスペースを加える
 
-                    ui.add_space(range * 0.15); // 左スペースを追加してボタンを中央寄せに
+                    ui.add_space(range * 0.05); // 左スペースを追加してボタンを中央寄せに
                     for food in food_list {
                         let space = spacing - text_size * 4 as f32;
 
@@ -224,11 +356,49 @@ impl eframe::App for TemplateApp {
                         .button(egui::RichText::new("取り消し").size(text_size))
                         .clicked()
                     {
-                        for _ in 0..3 {
-                            self.sold_food.pop();
+                        if let Some(history_n) = self.history.pop() {
+                            match history_n {
+                                Order::Food(_, n) => {
+                                    for _ in 0..n {
+                                        self.sold_food.pop();
+                                    }
+                                }
+                                Order::Reset => {
+                                    // 前のresetまでの履歴を取り出して、それを履歴に追加
+
+                                    if let Some(n) = self.get_last_history() {
+                                        // println!("reset1");
+
+                                        self.sold_food = self.history[n + 1..]
+                                            .iter()
+                                            .flat_map(|h| {
+                                                if let Order::Food(f, n) = h {
+                                                    vec![f.clone(); *n]
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            })
+                                            .collect();
+                                    } else {
+                                        // println!("reset2");
+
+                                        self.sold_food = self
+                                            .history
+                                            .iter()
+                                            .flat_map(|h| {
+                                                if let Order::Food(f, n) = h {
+                                                    vec![f.clone(); *n]
+                                                } else {
+                                                    unreachable!()
+                                                }
+                                            })
+                                            .collect();
+                                    }
+                                }
+                            }
                         }
 
-                        self.save_to_file(std::path::Path::new("sold_food.json"))
+                        self.save_to_file()
                             .unwrap_or_else(|e| eprintln!("Failed to save file: {}", e));
                     }
                 });
