@@ -113,15 +113,23 @@ impl TemplateApp {
     }
 
     pub fn save_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // 保存
-        let path = "sold_food.json";
-        if let Err(e) = self.save_to_file_sold_food(std::path::Path::new(path)) {
-            eprintln!("Failed to save file: {}", e);
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(());
         }
-        // 注文個数の履歴を保存
-        let path = "history.json";
-        if let Err(e) = self.save_to_file_history(std::path::Path::new(path)) {
-            eprintln!("Failed to save file: {}", e);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // 保存
+            let path = "sold_food.json";
+            if let Err(e) = self.save_to_file_sold_food(std::path::Path::new(path)) {
+                eprintln!("Failed to save file: {}", e);
+            }
+            // 注文個数の履歴を保存
+            let path = "history.json";
+            if let Err(e) = self.save_to_file_history(std::path::Path::new(path)) {
+                eprintln!("Failed to save file: {}", e);
+            }
         }
 
         Ok(())
@@ -154,18 +162,25 @@ impl TemplateApp {
     }
 
     pub fn load_from_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // 保存
-        let path = "sold_food.json";
-        if let Err(e) = self.load_sold_food_from_file(std::path::Path::new(path)) {
-            eprintln!("Failed to load file: {}", e);
-        }
-        // 注文個数の履歴を保存
-        let path = "history.json";
-        if let Err(e) = self.load_history_from_file(std::path::Path::new(path)) {
-            eprintln!("Failed to load file: {}", e);
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(());
         }
 
-        Ok(())
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // 保存
+            let path = "sold_food.json";
+            if let Err(e) = self.load_sold_food_from_file(std::path::Path::new(path)) {
+                eprintln!("Failed to load file: {}", e);
+            }
+            // 注文個数の履歴を保存
+            let path = "history.json";
+            if let Err(e) = self.load_history_from_file(std::path::Path::new(path)) {
+                eprintln!("Failed to load file: {}", e);
+            }
+            Ok(())
+        }
     }
 
     pub fn load_sold_food_from_file(
